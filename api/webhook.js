@@ -5,7 +5,7 @@ const answers = require('../data/answers.json');
 
 // КОНФИГУРАЦИЯ — ЗАМЕНИТЕ НА СВОИ ЗНАЧЕНИЯ ПОСЛЕ ДЕПЛОЯ
 const CONFIG = {
-  BOT_CLIENT_ID: 'ms89kl0mtycrp63se5gu6dhym99urzjz',        // Замените на CLIENT_ID бота из ШАГА 1.2
+  BOT_ID: '4331',        // Замените на CLIENT_ID бота из ШАГА 1.2
   BITRIX_WEBHOOK: 'https://hdl.bitrix24.ru/rest/1673/yc8pgt6q7i4j90gb/',      // Замените на URL вебхука из ШАГА 1.3
   YOUR_USER_ID: '1673'            // Замените на свой USER_ID из ШАГА 1.4
 };
