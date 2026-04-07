@@ -154,7 +154,7 @@ function findAnswerWithContext(messageText, dialogId) {
     if (lowerText.includes(keyword)) {
       sessions[dialogId] = { state: 'waiting_for_object', awaitingObject: true };
       writeJSON(sessionsPath, sessions);
-      return "🔍 Какой объект вас интересует? Напишите название (например: Павлово, Солнечный)";
+      return "🔍 Какой объект вас интересует? Напишите название (например: Павлово, Жуковка)";
     }
   }
   
