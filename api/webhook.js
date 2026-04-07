@@ -3,11 +3,11 @@
 
 const answers = require('../data/answers.json');
 
-// КОНФИГУРАЦИЯ - ИСПРАВЛЕНА
+// КОНФИГУРАЦИЯ
 const CONFIG = {
-  BOT_ID: 4331,                                    
+  BOT_ID: 4331,                                    // Числовой ID бота
   BITRIX_WEBHOOK: 'https://hdl.bitrix24.ru/rest/1673/yc8pgt6q7i4j90gb/',
-  YOUR_USER_ID: 1673                               
+  YOUR_USER_ID: 1673                               // Ваш личный ID
 };
 
 // Функция отправки сообщения от бота
@@ -15,7 +15,6 @@ async function sendMessage(dialogId, message) {
   const url = `${CONFIG.BITRIX_WEBHOOK}imbot.message.add`;
   
   console.log('Отправка сообщения:', {
-    url: url,
     BOT_ID: CONFIG.BOT_ID,
     DIALOG_ID: dialogId,
     MESSAGE: message.substring(0, 50)
@@ -25,7 +24,7 @@ async function sendMessage(dialogId, message) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      BOT_ID: CONFIG.BOT_ID,                       // ← ИСПРАВЛЕНО
+      BOT_ID: CONFIG.BOT_ID,
       DIALOG_ID: dialogId,
       MESSAGE: message
     })
@@ -34,6 +33,27 @@ async function sendMessage(dialogId, message) {
   const result = await response.json();
   console.log('Результат отправки:', result);
   return result;
+}
+
+// Функция извлечения данных из плоского объекта Битрикс24
+function extractFromFlatData(data) {
+  // Извлекаем сообщение
+  const messageText = data['data[PARAMS][MESSAGE]'] || '';
+  
+  // Извлекаем dialog_id (кто написал боту)
+  let dialogId = data['data[PARAMS][DIALOG_ID]'] || data['data[PARAMS][FROM_USER_ID]'] || '';
+  
+  // Извлекаем user_id отправителя
+  const userId = data['data[PARAMS][FROM_USER_ID]'] || data['data[USER][ID]'] || '';
+  
+  // Если dialogId пустой, берем из других полей
+  if (!dialogId) {
+    dialogId = data['data[PARAMS][TO_USER_ID]'] || userId;
+  }
+  
+  console.log('Извлечено:', { messageText, dialogId, userId });
+  
+  return { messageText, dialogId, userId };
 }
 
 // Функция поиска ответа в журнале
@@ -59,7 +79,6 @@ function findAnswer(messageText) {
 module.exports = async (req, res) => {
   console.log('=== Webhook вызван ===');
   console.log('Method:', req.method);
-  console.log('Body:', JSON.stringify(req.body, null, 2));
   
   // Только POST-запросы от Битрикс24
   if (req.method !== 'POST') {
@@ -68,15 +87,14 @@ module.exports = async (req, res) => {
   
   try {
     const data = req.body;
+    console.log('Получены ключи:', Object.keys(data).slice(0, 10));
     
-    // Извлекаем данные о сообщении
-    const messageText = data?.data?.PARAMS?.MESSAGE || '';
-    const dialogId = data?.data?.PARAMS?.DIALOG_ID;
-    const userId = data?.data?.PARAMS?.USER_ID;
+    // Извлекаем данные из плоской структуры
+    const { messageText, dialogId, userId } = extractFromFlatData(data);
     
     console.log(`Сообщение: "${messageText}", DialogId: ${dialogId}, UserId: ${userId}`);
     
-    // Игнорируем сообщения без текста
+    // Игнорируем сообщения без текста или dialogId
     if (!messageText || !dialogId) {
       console.log('Нет текста или dialogId, игнорируем');
       return res.status(200).json({ status: 'ignored' });
