@@ -95,25 +95,6 @@ function getObjectStatus(objectName) {
   return response;
 }
 
-// Функция проверки исключений (отвлечённые вопросы)
-function checkException(messageText) {
-  const lowerText = messageText.toLowerCase().trim();
-  
-  // Проверяем точное совпадение
-  if (exceptions[lowerText]) {
-    return exceptions[lowerText];
-  }
-  
-  // Проверяем по вхождению ключевой фразы
-  for (const [keyword, answer] of Object.entries(exceptions)) {
-    if (lowerText.includes(keyword)) {
-      return answer;
-    }
-  }
-  
-  return null;
-}
-
 // Функция поиска ответа с учетом контекста диалога и исключений
 function findAnswerWithContext(messageText, dialogId) {
   const lowerText = messageText.toLowerCase().trim();
@@ -134,11 +115,15 @@ function findAnswerWithContext(messageText, dialogId) {
     }
   }
   
-  // ПРОВЕРКА ИСКЛЮЧЕНИЙ (отвлечённые вопросы)
-  const exceptionAnswer = checkException(messageText);
-  if (exceptionAnswer) {
-    return exceptionAnswer;
+  // ========== НОВАЯ ЛОГИКА ПРОВЕРКИ ИСКЛЮЧЕНИЙ ==========
+  // Если в сообщении есть ЛЮБОЕ слово из exceptions.json — сразу считаем нерелевантным
+  for (const [keyword, answer] of Object.entries(exceptions)) {
+    if (lowerText.includes(keyword)) {
+      console.log(`[ИСКЛЮЧЕНИЕ] Найдено ключевое слово "${keyword}" в сообщении`);
+      return answer;
+    }
   }
+  // ===================================================
   
   // Проверка запроса статуса объекта
   const statusKeywords = ['статус по объекту', 'статус объекта', 'информация по объекту', 'расскажи про объект'];
