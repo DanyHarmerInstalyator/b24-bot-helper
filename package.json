@@ -1,0 +1,6 @@
+{
+  "name": "b24-bot-helper",
+  "version": "1.0.0",
+  "description": "Бот-помощник для личных сообщений в Битрикс24",
+  "main": "api/webhook.js"
+}
