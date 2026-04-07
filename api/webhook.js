@@ -1,5 +1,6 @@
 // api/webhook.js
-// Бот-помощник с диалоговыми сценариями и словарём исключений
+// Бот-помощник для личных сообщений в Битрикс24
+// С диалоговыми сценариями, словарём исключений и памятью диалогов
 
 const fs = require('fs');
 const path = require('path');
@@ -35,12 +36,12 @@ let exceptions = readJSON(exceptionsPath);
 let objects = readJSON(objectsPath);
 let sessions = readJSON(sessionsPath);
 
-// КОНФИГУРАЦИЯ
+// КОНФИГУРАЦИЯ - ЗАМЕНИТЕ НА СВОИ ЗНАЧЕНИЯ
 const CONFIG = {
-  BOT_ID: 4331,
-  CLIENT_ID: 'ms89kl0mtycrp63se5gu6dhym99urzjz',
+  BOT_ID: 4331,                                    // Числовой ID бота
+  CLIENT_ID: 'ms89kl0mtycrp63se5gu6dhym99urzjz',  // CLIENT_ID бота
   BITRIX_WEBHOOK: 'https://hdl.bitrix24.ru/rest/1673/yc8pgt6q7i4j90gb/',
-  YOUR_USER_ID: 1673
+  YOUR_USER_ID: 1673                               // Ваш личный ID
 };
 
 // Функция отправки сообщения
@@ -61,7 +62,7 @@ async function sendMessage(dialogId, message) {
   return await response.json();
 }
 
-// Функция извлечения данных
+// Функция извлечения данных из плоского объекта Битрикс24
 function extractFromFlatData(data) {
   const messageText = data['data[PARAMS][MESSAGE]'] || '';
   let dialogId = data['data[PARAMS][DIALOG_ID]'] || data['data[PARAMS][FROM_USER_ID]'] || '';
@@ -95,6 +96,32 @@ function getObjectStatus(objectName) {
   return response;
 }
 
+// Функция проверки исключений (по отдельным словам и фразам)
+function checkException(messageText) {
+  const lowerText = messageText.toLowerCase().trim();
+  
+  // Разбиваем сообщение на отдельные слова
+  const words = lowerText.split(/\s+/);
+  
+  // Проверяем каждое слово на совпадение с ключами исключений
+  for (const word of words) {
+    if (exceptions[word]) {
+      console.log(`[ИСКЛЮЧЕНИЕ] Найдено слово "${word}"`);
+      return exceptions[word];
+    }
+  }
+  
+  // Также проверяем точные фразы (для многословных ключей)
+  for (const [keyword, answer] of Object.entries(exceptions)) {
+    if (lowerText.includes(keyword)) {
+      console.log(`[ИСКЛЮЧЕНИЕ] Найдена фраза "${keyword}"`);
+      return answer;
+    }
+  }
+  
+  return null;
+}
+
 // Функция поиска ответа с учетом контекста диалога и исключений
 function findAnswerWithContext(messageText, dialogId) {
   const lowerText = messageText.toLowerCase().trim();
@@ -115,15 +142,11 @@ function findAnswerWithContext(messageText, dialogId) {
     }
   }
   
-  // ========== НОВАЯ ЛОГИКА ПРОВЕРКИ ИСКЛЮЧЕНИЙ ==========
-  // Если в сообщении есть ЛЮБОЕ слово из exceptions.json — сразу считаем нерелевантным
-  for (const [keyword, answer] of Object.entries(exceptions)) {
-    if (lowerText.includes(keyword)) {
-      console.log(`[ИСКЛЮЧЕНИЕ] Найдено ключевое слово "${keyword}" в сообщении`);
-      return answer;
-    }
+  // Проверка исключений (по словам и фразам)
+  const exceptionAnswer = checkException(messageText);
+  if (exceptionAnswer) {
+    return exceptionAnswer;
   }
-  // ===================================================
   
   // Проверка запроса статуса объекта
   const statusKeywords = ['статус по объекту', 'статус объекта', 'информация по объекту', 'расскажи про объект'];
@@ -179,14 +202,12 @@ module.exports = async (req, res) => {
       return res.status(200).json({ status: 'ignored' });
     }
     
-    // Ищем ответ с учетом контекста и исключений
     const answer = findAnswerWithContext(messageText, dialogId);
     
     if (answer) {
       await sendMessage(dialogId, answer);
       console.log(`[BOT] Ответил ${fullName}`);
     } else {
-      // Неизвестный вопрос — уведомляем Дмитрия
       const notification = `🔔 **${fullName}** (ID: ${userId}) написал боту:\n\n❓ Вопрос: "${messageText}"\n\n👉 Пожалуйста, ответьте ему в диалоге с ботом.`;
       await sendMessage(CONFIG.YOUR_USER_ID, notification);
       console.log(`[BOT] Уведомление отправлено Дмитрию`);
