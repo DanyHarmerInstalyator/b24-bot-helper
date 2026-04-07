@@ -5,9 +5,9 @@ const answers = require('../data/answers.json');
 
 // КОНФИГУРАЦИЯ - ИСПРАВЛЕНА
 const CONFIG = {
-  BOT_ID: 4331,                                    // Число! Не строка
+  BOT_ID: 4331,                                    
   BITRIX_WEBHOOK: 'https://hdl.bitrix24.ru/rest/1673/yc8pgt6q7i4j90gb/',
-  YOUR_USER_ID: 1673                               // Число! Не строка
+  YOUR_USER_ID: 1673                               
 };
 
 // Функция отправки сообщения от бота
