@@ -1,15 +1,16 @@
 // api/webhook.js
-// Бот-помощник с диалоговыми сценариями
+// Бот-помощник с диалоговыми сценариями и словарём исключений
 
 const fs = require('fs');
 const path = require('path');
 
 // Пути к файлам
 const answersPath = path.join(__dirname, '../data/answers.json');
+const exceptionsPath = path.join(__dirname, '../data/exceptions.json');
 const objectsPath = path.join(__dirname, '../data/objects.json');
 const sessionsPath = path.join(__dirname, '../data/sessions.json');
 
-// Функции для работы с файлами (в Vercel нужно использовать синхронные методы)
+// Функции для работы с файлами
 function readJSON(filePath) {
   try {
     const data = fs.readFileSync(filePath, 'utf8');
@@ -30,6 +31,7 @@ function writeJSON(filePath, data) {
 
 // Загружаем данные
 let answers = readJSON(answersPath);
+let exceptions = readJSON(exceptionsPath);
 let objects = readJSON(objectsPath);
 let sessions = readJSON(sessionsPath);
 
@@ -93,7 +95,26 @@ function getObjectStatus(objectName) {
   return response;
 }
 
-// Функция поиска ответа с учетом контекста диалога
+// Функция проверки исключений (отвлечённые вопросы)
+function checkException(messageText) {
+  const lowerText = messageText.toLowerCase().trim();
+  
+  // Проверяем точное совпадение
+  if (exceptions[lowerText]) {
+    return exceptions[lowerText];
+  }
+  
+  // Проверяем по вхождению ключевой фразы
+  for (const [keyword, answer] of Object.entries(exceptions)) {
+    if (lowerText.includes(keyword)) {
+      return answer;
+    }
+  }
+  
+  return null;
+}
+
+// Функция поиска ответа с учетом контекста диалога и исключений
 function findAnswerWithContext(messageText, dialogId) {
   const lowerText = messageText.toLowerCase().trim();
   
@@ -102,27 +123,42 @@ function findAnswerWithContext(messageText, dialogId) {
   
   // Сценарий: ждем название объекта
   if (session.awaitingObject === true) {
-    // Сбрасываем состояние
     sessions[dialogId] = { state: 'idle', awaitingObject: false };
     writeJSON(sessionsPath, sessions);
     
-    // Проверяем статус объекта
     const status = getObjectStatus(lowerText);
     if (status) {
       return status;
     } else {
-      return `❌ Объект "${messageText}" не найден в базе.\n\nПожалуйста, уточните название или обратитесь к Дмитрию.`;
+      return `❌ Объект "${messageText}" не найден в базе.\n\nПожалуйста, уточните название или напишите "статус по объекту" ещё раз.\n\nИли я могу передать ваш вопрос Дмитрию.`;
     }
   }
   
-  // Проверяем ключевые слова для запроса статуса объекта
-  const statusKeywords = ['статус', 'что по объекту', 'информация по объекту', 'расскажи про объект', 'узнать статус'];
+  // ПРОВЕРКА ИСКЛЮЧЕНИЙ (отвлечённые вопросы)
+  const exceptionAnswer = checkException(messageText);
+  if (exceptionAnswer) {
+    return exceptionAnswer;
+  }
+  
+  // Проверка запроса статуса объекта
+  const statusKeywords = ['статус по объекту', 'статус объекта', 'информация по объекту', 'расскажи про объект'];
   for (const keyword of statusKeywords) {
     if (lowerText.includes(keyword)) {
-      // Запоминаем, что ждем название объекта
       sessions[dialogId] = { state: 'waiting_for_object', awaitingObject: true };
       writeJSON(sessionsPath, sessions);
-      return "🔍 Какой объект вас интересует? Напишите название (например: Павлово, ЖК Событие)";
+      return "🔍 Какой объект вас интересует? Напишите название (например: Павлово, Солнечный)";
+    }
+  }
+  
+  // Проверка прямого запроса "статус по объекту X"
+  const directMatch = lowerText.match(/статус по объекту\s+(.+)/i);
+  if (directMatch) {
+    const objectName = directMatch[1];
+    const status = getObjectStatus(objectName);
+    if (status) {
+      return status;
+    } else {
+      return `❌ Объект "${objectName}" не найден в базе.\n\nПроверьте название или напишите "статус по объекту" без указания объекта — я попрошу уточнить.`;
     }
   }
   
@@ -158,7 +194,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({ status: 'ignored' });
     }
     
-    // Ищем ответ с учетом контекста диалога
+    // Ищем ответ с учетом контекста и исключений
     const answer = findAnswerWithContext(messageText, dialogId);
     
     if (answer) {
@@ -170,7 +206,7 @@ module.exports = async (req, res) => {
       await sendMessage(CONFIG.YOUR_USER_ID, notification);
       console.log(`[BOT] Уведомление отправлено Дмитрию`);
       
-      await sendMessage(dialogId, 'Я передал ваш вопрос Дмитрию. Он ответит вам в ближайшее время.');
+      await sendMessage(dialogId, '🤔 Я не совсем понял ваш вопрос. Я умею отвечать на вопросы по статусу объектов.\n\nЕсли вам нужна помощь Дмитрия — он получил уведомление и скоро ответит.\n\n📌 Попробуйте написать "статус по объекту" или "помощь"');
     }
     
     res.status(200).json({ status: 'ok' });
