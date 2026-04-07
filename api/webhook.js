@@ -6,6 +6,7 @@ const answers = require('../data/answers.json');
 // КОНФИГУРАЦИЯ
 const CONFIG = {
   BOT_ID: 4331,                                    // Числовой ID бота
+  CLIENT_ID: 'ms89kl0mtycrp63se5gu6dhym99urzjz',  // CLIENT_ID бота (строка)
   BITRIX_WEBHOOK: 'https://hdl.bitrix24.ru/rest/1673/yc8pgt6q7i4j90gb/',
   YOUR_USER_ID: 1673                               // Ваш личный ID
 };
@@ -16,6 +17,7 @@ async function sendMessage(dialogId, message) {
   
   console.log('Отправка сообщения:', {
     BOT_ID: CONFIG.BOT_ID,
+    CLIENT_ID: CONFIG.CLIENT_ID,
     DIALOG_ID: dialogId,
     MESSAGE: message.substring(0, 50)
   });
@@ -25,6 +27,7 @@ async function sendMessage(dialogId, message) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       BOT_ID: CONFIG.BOT_ID,
+      CLIENT_ID: CONFIG.CLIENT_ID,                 // ← ДОБАВЛЕНО!
       DIALOG_ID: dialogId,
       MESSAGE: message
     })
