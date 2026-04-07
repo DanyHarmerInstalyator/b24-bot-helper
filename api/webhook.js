@@ -3,28 +3,37 @@
 
 const answers = require('../data/answers.json');
 
-// КОНФИГУРАЦИЯ — ЗАМЕНИТЕ НА СВОИ ЗНАЧЕНИЯ ПОСЛЕ ДЕПЛОЯ
+// КОНФИГУРАЦИЯ - ИСПРАВЛЕНА
 const CONFIG = {
-  BOT_ID: '4331',        // Замените на CLIENT_ID бота из ШАГА 1.2
-  BITRIX_WEBHOOK: 'https://hdl.bitrix24.ru/rest/1673/yc8pgt6q7i4j90gb/',      // Замените на URL вебхука из ШАГА 1.3
-  YOUR_USER_ID: '1673'            // Замените на свой USER_ID из ШАГА 1.4
+  BOT_ID: 4331,                                    // Число! Не строка
+  BITRIX_WEBHOOK: 'https://hdl.bitrix24.ru/rest/1673/yc8pgt6q7i4j90gb/',
+  YOUR_USER_ID: 1673                               // Число! Не строка
 };
 
 // Функция отправки сообщения от бота
 async function sendMessage(dialogId, message) {
   const url = `${CONFIG.BITRIX_WEBHOOK}imbot.message.add`;
   
+  console.log('Отправка сообщения:', {
+    url: url,
+    BOT_ID: CONFIG.BOT_ID,
+    DIALOG_ID: dialogId,
+    MESSAGE: message.substring(0, 50)
+  });
+  
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      BOT_ID: CONFIG.BOT_CLIENT_ID,
+      BOT_ID: CONFIG.BOT_ID,                       // ← ИСПРАВЛЕНО
       DIALOG_ID: dialogId,
       MESSAGE: message
     })
   });
   
-  return await response.json();
+  const result = await response.json();
+  console.log('Результат отправки:', result);
+  return result;
 }
 
 // Функция поиска ответа в журнале
@@ -48,6 +57,10 @@ function findAnswer(messageText) {
 
 // Главный обработчик вебхука
 module.exports = async (req, res) => {
+  console.log('=== Webhook вызван ===');
+  console.log('Method:', req.method);
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  
   // Только POST-запросы от Битрикс24
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -61,8 +74,11 @@ module.exports = async (req, res) => {
     const dialogId = data?.data?.PARAMS?.DIALOG_ID;
     const userId = data?.data?.PARAMS?.USER_ID;
     
+    console.log(`Сообщение: "${messageText}", DialogId: ${dialogId}, UserId: ${userId}`);
+    
     // Игнорируем сообщения без текста
     if (!messageText || !dialogId) {
+      console.log('Нет текста или dialogId, игнорируем');
       return res.status(200).json({ status: 'ignored' });
     }
     
@@ -71,13 +87,15 @@ module.exports = async (req, res) => {
     
     if (answer) {
       // Ответ найден — бот отвечает сам
+      console.log(`Найден ответ: ${answer}`);
       await sendMessage(dialogId, answer);
-      console.log(`[BOT] Ответил пользователю ${userId}: ${answer}`);
+      console.log(`[BOT] Ответил пользователю ${userId}`);
     } else {
       // Ответ не найден — отправляем уведомление Дмитрию
+      console.log('Ответ не найден, отправляем уведомление');
       const notification = `🔔 Пользователь написал боту:\n\nВопрос: "${messageText}"\n\nПожалуйста, ответьте ему в диалоге с ботом.`;
       await sendMessage(CONFIG.YOUR_USER_ID, notification);
-      console.log(`[BOT] Отправил уведомление Дмитрию от пользователя ${userId}`);
+      console.log(`[BOT] Уведомление отправлено Дмитрию`);
       
       // Также можно ответить пользователю, что вопрос передан
       await sendMessage(dialogId, 'Я передал ваш вопрос Дмитрию. Он ответит вам в ближайшее время.');
