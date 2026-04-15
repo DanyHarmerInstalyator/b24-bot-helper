@@ -1,6 +1,17 @@
 {
-  "name": "b24-bot-helper",
+  "name": "b24-procurement-bot",
   "version": "1.0.0",
-  "description": "Бот-помощник для личных сообщений в Битрикс24",
-  "main": "api/webhook.js"
+  "description": "AI-Assistant Bot for Procurement (Dmitry Bralkovsky)",
+  "main": "api/bitrix/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": "18.x"
+  }
 }

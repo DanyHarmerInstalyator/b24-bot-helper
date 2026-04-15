@@ -1,7 +1,9 @@
 {
-  "functions": {
-    "api/webhook.js": {
-      "maxDuration": 10
+  "rewrites": [
+    {
+      "source": "/api/bitrix",
+      "destination": "/api/bitrix/index.js"
     }
-  }
+  ],
+  "crons": []
 }
