@@ -1,5 +1,5 @@
 // api/bitrix/index.js
-// ✅ Исправлено: используем im.message.add с BOT_ID в параметрах
+// ✅ Исправлено: используем правильный метод для ботов
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,11 +27,11 @@ export default async function handler(req, res) {
     const FROM_USER_ID = getMessage('FROM_USER_ID') || '';
     const FROM_USER_NAME = getUser('NAME') || 'Сотрудник';
     
-    // Формируем DIALOG_ID для ответа: user{ID} для личных сообщений
-    const REPLY_DIALOG_ID = `user${DIALOG_ID_RAW}`;
-
+    // Извлекаем числовой ID пользователя из DIALOG_ID (формат: user1673)
+    const TO_USER_ID = DIALOG_ID_RAW.toString().replace('user', '');
+    
     console.log(`[MSG] ${FROM_USER_NAME} (${FROM_USER_ID}): "${MESSAGE}"`);
-    console.log(`[REPLY_TO] ${REPLY_DIALOG_ID}`);
+    console.log(`[REPLY_TO] user${TO_USER_ID}`);
 
     // === Логика словарей ===
     const text = MESSAGE.toLowerCase().trim();
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     // Если нашли ответ — отправляем
     if (reply) {
       console.log('[REPLY] Sending auto-response');
-      const result = await sendBitrixBotMessage(REPLY_DIALOG_ID, reply);
+      const result = await sendBitrixMessage(TO_USER_ID, reply);
       console.log('[BITRIX RESULT]', result);
       return res.status(200).json({ status: 'replied', reply });
     }
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
     const dmitryId = process.env.DMITRY_USER_ID || '1';
     if (String(FROM_USER_ID) !== String(dmitryId)) {
       const forwardMsg = `❓ <b>Вопрос от сотрудника:</b>\n🗣 ${FROM_USER_NAME}:\n<i>"${MESSAGE}"</i>\n\n🤖 Бот не нашёл ответа.`;
-      await sendBitrixBotMessage(`user${dmitryId}`, forwardMsg);
+      await sendBitrixMessage(dmitryId, forwardMsg);
       console.log(`[FORWARD] Sent to Dmitry (ID: ${dmitryId})`);
     }
 
@@ -75,26 +75,24 @@ export default async function handler(req, res) {
   }
 }
 
-// === ✅ ИСПРАВЛЕНО: отправка через im.message.add ===
-async function sendBitrixBotMessage(dialogId, message) {
+// === ✅ ОТПРАВКА через im.message.add с USER_ID ===
+async function sendBitrixMessage(userId, message) {
   const webhook = process.env.BITRIX_WEBHOOK_URL;
-  const botId = process.env.BITRIX_BOT_ID || '4341';
-
+  
   if (!webhook) {
     throw new Error('BITRIX_WEBHOOK_URL not set in Vercel Env Variables');
   }
 
-  // ✅ Используем im.message.add с BOT_ID в параметрах
+  // Метод im.message.add требует USER_ID (числовой ID получателя)
   const url = `${webhook.replace(/\/$/, '')}/im.message.add.json`;
   
   const params = {
-    DIALOG_ID: dialogId,      // user1673 или chat456
-    MESSAGE: message,         // текст сообщения
-    BOT_ID: botId,            // ID бота (4341)
-    SYSTEM: 'N'               // Не системное сообщение
+    USER_ID: parseInt(userId),  // Числовой ID пользователя
+    MESSAGE: message,            // Текст сообщения
+    MESSAGE_TYPE: 'P'           // P - личное сообщение (private)
   };
 
-  console.log(`[SEND] POST ${url} with:`, params);
+  console.log(`[SEND] POST ${url} to USER_ID: ${userId}`);
 
   const response = await fetch(url, {
     method: 'POST',
