@@ -1,80 +1,65 @@
-import { TRIGGERS, TRIGGER_KEYS } from '../../src/dictionaries/triggers.js';
-import { ROUTING } from '../../src/dictionaries/routing.js';
-import { sendMessage } from '../../src/services/bitrix.js';
-import { normalizeText } from '../../src/utils/textParser.js'; // Создадим чуть ниже
+// api/bitrix/index.js
+export default async function handler(req, res) {
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-/**
- * Главный обработчик Vercel Serverless Function
- */
-export default async function handler(request, response) {
-  
-  // 1. Разрешаем CORS и отвечаем на GET-запрос (проверка живости от Битрикса)
-  if (request.method === 'GET') {
-    response.status(200).send('OK');
-    return;
+  // 1. GET-запрос (проверка живости)
+  if (req.method === 'GET') {
+    return res.status(200).json({ status: 'OK', message: 'Bot is alive' });
   }
 
-  // 2. Обрабатываем только POST (события от Битрикса)
-  if (request.method !== 'POST') {
-    response.status(405).send('Method Not Allowed');
-    return;
+  // 2. POST-запрос (событие от Битрикс24)
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const event = request.body;
-    
-    // Проверка: это сообщение от пользователя?
-    // Битрикс шлет разные события, нам нужно только ONIMBOTMESSAGEADD
-    if (event.event !== 'ONIMBOTMESSAGEADD') {
-      response.status(200).send('IGNORED_EVENT');
-      return;
+    const body = req.body || {};
+    console.log('[INCOMING EVENT]', JSON.stringify(body));
+
+    // Проверяем тип события
+    if (body.event !== 'ONIMBOTMESSAGEADD') {
+      console.log('[IGNORED] Not ONIMBOTMESSAGEADD');
+      return res.status(200).json({ status: 'ignored' });
     }
 
-    const {
-      data: { MESSAGE, DIALOG_ID, FROM_USER_ID, FROM_USER_NAME }
-    } = event;
+    // Безопасная распаковка данных
+    const data = body.data || {};
+    const { MESSAGE, DIALOG_ID, FROM_USER_ID, FROM_USER_NAME } = data;
 
-    console.log(`[NEW MSG] From: ${FROM_USER_NAME} | Text: ${MESSAGE}`);
+    console.log(`[MSG] ${FROM_USER_NAME} (${FROM_USER_ID}): "${MESSAGE}"`);
 
-    // 3. Логика обработки текста
-    const normalizedMsg = normalizeText(MESSAGE);
-    let isMatched = false;
+    // Здесь будет логика словарей (пока просто эхо для теста)
+    const reply = `🤖 Эхо: Вы написали "${MESSAGE}"\n📩 Если вопрос сложный, он будет передан Дмитрию.`;
 
-    // Перебираем ключевые слова из словаря
-    for (const keyword of TRIGGER_KEYS) {
-      if (normalizedMsg.includes(keyword)) {
-        // Нашли совпадение!
-        const reply = TRIGGERS[keyword];
-        await sendMessage(DIALOG_ID, reply);
-        
-        console.log(`[REPLY] Sent trigger response for: "${keyword}"`);
-        isMatched = true;
-        break; // Прерываем цикл, чтобы не спамить ответами
-      }
-    }
+    // Отправка ответа через встроенный fetch
+    const webhook = process.env.BITRIX_WEBHOOK_URL;
+    const botId = process.env.BITRIX_BOT_ID || '4341';
 
-    // 4. Если совпадений нет — пересылаем Дмитрию (если нужно)
-    if (!isMatched) {
-      // Проверяем, не от Дмитрия ли сообщение (чтобы не слать ему его же вопросы)
-      if (String(FROM_USER_ID) !== String(CONFIG.bitrix.dmitryId)) {
-        
-        // Формируем сообщение для пересылки
-        const forwardText = `❓ <b>Вопрос от сотрудника:</b>\n🗣 ${FROM_USER_NAME} (${FROM_USER_ID}):\n<i>"${MESSAGE}"</i>\n\n🤖 Бот не нашел ответа в базе.`;
-        
-        // Отправляем в ЛС Дмитрию
-        await sendMessage(`user${CONFIG.bitrix.dmitryId}`, forwardText);
-        console.log(`[FORWARD] Sent to Dmitry (ID: ${CONFIG.bitrix.dmitryId})`);
-        
-        // Опционально: можно ответить пользователю, что вопрос принят
-        // await sendMessage(DIALOG_ID, `✅ Вопрос принят, Дмитрий скоро ответит.`);
-      }
-    }
+    if (!webhook) throw new Error('BITRIX_WEBHOOK_URL is not set in Vercel Env Variables!');
 
-    // 5. Успешный ответ Битриксу (чтобы он не дублировал событие)
-    response.status(200).send('PROCESSED');
+    const url = `${webhook.replace(/\/$/, '')}/im.message.add.json`;
+    const params = new URLSearchParams({
+      DIALOG_ID: DIALOG_ID,
+      MESSAGE: reply,
+      FROM_BOT_ID: botId
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params
+    });
+
+    const result = await response.json();
+    console.log('[BITRIX RESPONSE]', result);
+
+    return res.status(200).json({ status: 'success', bitrixResult: result });
 
   } catch (error) {
-    console.error('[FATAL ERROR]:', error);
-    response.status(500).send('INTERNAL_ERROR');
+    console.error('[FATAL ERROR]', error.message, error.stack);
+    return res.status(500).json({ error: 'Function crashed', details: error.message });
   }
 }
