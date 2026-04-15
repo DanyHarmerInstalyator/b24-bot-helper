@@ -1,102 +1,83 @@
-// api/bitrix/index.js
-// ✅ Чистый код для Vercel: без dotenv, с native fetch, с обработкой ошибок
-
+// api/bitrix/index.js — DEBUG: покажи всё, что пришло
 export default async function handler(req, res) {
-  // CORS заголовки
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // === 1. GET: проверка живости ===
   if (req.method === 'GET') {
-    return res.status(200).json({ 
-      status: 'OK', 
-      message: 'ProcurementBot is alive 🤖',
-      timestamp: new Date().toISOString()
-    });
+    return res.status(200).json({ status: 'OK', message: 'Bot alive 🤖' });
   }
 
-  // === 2. POST: обработка событий от Битрикс24 ===
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
+    // === ЛОГИРУЕМ ВСЁ ПОДРОБНО ===
+    console.log('=== RAW BODY ===');
+    console.log(JSON.stringify(req.body, null, 2));
+    console.log('================');
+
     const body = req.body || {};
-    console.log('[INCOMING]', JSON.stringify({ 
-      event: body.event, 
-      dialog: body.data?.DIALOG_ID 
-    }));
 
-    // Проверяем, что это сообщение боту
-    if (body.event !== 'ONIMBOTMESSAGEADD') {
-      console.log('[SKIP] Wrong event type:', body.event);
-      return res.status(200).json({ status: 'ignored_event' });
+    // Проверяем, есть ли data и какого оно типа
+    if (!body.data) {
+      console.log('[DEBUG] body.data is MISSING');
+    } else if (typeof body.data === 'string') {
+      console.log('[DEBUG] body.data is STRING, trying to parse...');
+      try {
+        body.data = JSON.parse(body.data);
+      } catch (e) {
+        console.log('[DEBUG] Failed to parse data as JSON');
+      }
     }
 
-    // Распаковка данных сообщения
-    const { MESSAGE, DIALOG_ID, FROM_USER_ID, FROM_USER_NAME } = body.data || {};
-    
+    // Пробуем разные варианты извлечения полей
+    const data = body.data || body.params || {};
+    const MESSAGE = data.MESSAGE || data.message || data.text || '';
+    const DIALOG_ID = data.DIALOG_ID || data.dialog_id || data.chat_id || '';
+    const FROM_USER_ID = data.FROM_USER_ID || data.user_id || '';
+    const FROM_USER_NAME = data.FROM_USER_NAME || data.user_name || 'Unknown';
+
+    console.log(`[PARSED] MESSAGE: "${MESSAGE}", DIALOG_ID: "${DIALOG_ID}", USER: ${FROM_USER_NAME} (${FROM_USER_ID})`);
+
+    // Если всё ещё пусто — отвечаем и выходим
     if (!MESSAGE || !DIALOG_ID) {
-      console.warn('[WARN] Empty message or dialog_id');
-      return res.status(200).json({ status: 'empty_payload' });
+      console.log('[WARN] Still empty after parsing — check Bitrix payload format');
+      return res.status(200).json({ 
+        status: 'empty', 
+        debug: { bodyKeys: Object.keys(body), dataKeys: Object.keys(data) } 
+      });
     }
 
-    console.log(`[MSG] ${FROM_USER_NAME} (${FROM_USER_ID}): "${MESSAGE}"`);
-
-    // === ЛОГИКА СЛОВАРЕЙ (упрощённая для теста) ===
-    const text = MESSAGE.toLowerCase().trim();
+    // === Простая логика ответов ===
+    const text = MESSAGE.toLowerCase();
     let reply = null;
 
-    // Простой поиск по ключевым словам
-    if (text.includes('привет') || text.includes('здравствуй')) {
-      reply = '👋 Здравствуйте! Я ассистент Дмитрия Бралковского.\nСпросите о статусе объекта, поставке или заказе.';
-    } 
-    else if (text.includes('событие')) {
-      reply = 'ℹ️ По объекту "Событие":\n📦 Статус: В пути (ожидаемая поставка 18.04)\n👤 Ответственный: Иванов А.\n📋 Заказ №4521';
-    }
-    else if (text.includes('статус') || text.includes('где заказ')) {
-      reply = '🔍 Для проверки статуса уточните номер заказа или название объекта.';
-    }
-    else if (text.includes('приехало') || text.includes('доставк')) {
-      reply = '🚚 Информация о прибытии:\nПроверьте накладные в сделке или уточните у логиста.';
+    if (text.includes('привет')) {
+      reply = '👋 Привет! Я бот Дмитрия. Спроси о статусе заказа.';
+    } else if (text.includes('событие')) {
+      reply = 'ℹ️ Объект "Событие": статус — В пути.';
     }
 
-    // Если нашли ответ в "словаре" — отправляем
     if (reply) {
-      await sendBitrixMessage(DIALOG_ID, reply);
-      console.log('[REPLY] Sent auto-response');
-      return res.status(200).json({ status: 'replied', reply });
+      console.log('[REPLY] Sending:', reply);
+      const result = await sendBitrixMessage(DIALOG_ID, reply);
+      console.log('[BITRIX RESULT]', result);
+      return res.status(200).json({ status: 'replied' });
     }
 
-    // === Если нет совпадений — пересылаем Дмитрию ===
-    const dmitryId = process.env.DMITRY_USER_ID || '1';
-    if (String(FROM_USER_ID) !== String(dmitryId)) {
-      const forwardMsg = `❓ <b>Вопрос от сотрудника:</b>\n🗣 ${FROM_USER_NAME}:\n<i>"${MESSAGE}"</i>\n\n🤖 Бот не нашёл ответа.`;
-      await sendBitrixMessage(`user${dmitryId}`, forwardMsg);
-      console.log(`[FORWARD] Sent to Dmitry (ID: ${dmitryId})`);
-    }
-
-    return res.status(200).json({ status: 'forwarded' });
+    return res.status(200).json({ status: 'no_match' });
 
   } catch (error) {
-    console.error('[FATAL]', error.message);
-    console.error(error.stack);
-    return res.status(500).json({ 
-      error: 'Function crashed', 
-      details: error.message 
-    });
+    console.error('[FATAL]', error.message, error.stack);
+    return res.status(500).json({ error: error.message });
   }
 }
 
-// === Вспомогательная функция отправки сообщения ===
 async function sendBitrixMessage(dialogId, message) {
   const webhook = process.env.BITRIX_WEBHOOK_URL;
   const botId = process.env.BITRIX_BOT_ID || '4341';
 
-  if (!webhook) {
-    throw new Error('BITRIX_WEBHOOK_URL not set in Vercel Env Variables');
-  }
+  if (!webhook) throw new Error('BITRIX_WEBHOOK_URL not set');
 
   const url = `${webhook.replace(/\/$/, '')}/im.message.add.json`;
   const params = new URLSearchParams({
@@ -111,10 +92,6 @@ async function sendBitrixMessage(dialogId, message) {
     body: params
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Bitrix API error: ${response.status} ${errText}`);
-  }
-
-  return await response.json();
+  const text = await response.text();
+  return JSON.parse(text);
 }
