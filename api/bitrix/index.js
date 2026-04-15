@@ -1,5 +1,5 @@
 // api/bitrix/index.js
-// ✅ Исправлено: используем im.bot.message.add для отправки от имени бота
+// ✅ Исправлено: используем im.message.add с BOT_ID в параметрах
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
   }
 }
 
-// === ✅ ИСПРАВЛЕНО: отправка через im.bot.message.add ===
+// === ✅ ИСПРАВЛЕНО: отправка через im.message.add ===
 async function sendBitrixBotMessage(dialogId, message) {
   const webhook = process.env.BITRIX_WEBHOOK_URL;
   const botId = process.env.BITRIX_BOT_ID || '4341';
@@ -84,21 +84,24 @@ async function sendBitrixBotMessage(dialogId, message) {
     throw new Error('BITRIX_WEBHOOK_URL not set in Vercel Env Variables');
   }
 
-  // ✅ Используем правильный метод для ботов
-  const url = `${webhook.replace(/\/$/, '')}/im.bot.message.add.json`;
+  // ✅ Используем im.message.add с BOT_ID в параметрах
+  const url = `${webhook.replace(/\/$/, '')}/im.message.add.json`;
   
-  const params = new URLSearchParams({
+  const params = {
     DIALOG_ID: dialogId,      // user1673 или chat456
     MESSAGE: message,         // текст сообщения
-    BOT_ID: botId             // ID бота (4341)
-  });
+    BOT_ID: botId,            // ID бота (4341)
+    SYSTEM: 'N'               // Не системное сообщение
+  };
 
-  console.log(`[SEND] POST ${url} with: DIALOG_ID=${dialogId}, BOT_ID=${botId}`);
+  console.log(`[SEND] POST ${url} with:`, params);
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params
+    headers: { 
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(params)
   });
 
   const text = await response.text();
@@ -108,5 +111,12 @@ async function sendBitrixBotMessage(dialogId, message) {
     throw new Error(`Bitrix API error ${response.status}: ${text}`);
   }
 
-  return JSON.parse(text);
+  const result = JSON.parse(text);
+  
+  // Проверяем наличие ошибки в ответе
+  if (result.error) {
+    throw new Error(`Bitrix API error: ${result.error} - ${result.error_description}`);
+  }
+  
+  return result;
 }
